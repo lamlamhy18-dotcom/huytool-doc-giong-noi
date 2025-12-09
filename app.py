@@ -2,145 +2,110 @@ import streamlit as st
 import edge_tts
 import asyncio
 import os
-import tempfile
 
-# 1. CẤU HÌNH TRANG (Giao diện Rộng giống web mẫu)
-st.set_page_config(page_title="Siêu AI Đọc Giọng Nói", page_icon="🎧", layout="wide")
+# --- 1. CẤU HÌNH GIAO DIỆN ---
+st.set_page_config(page_title="Edge-TTS Pro", page_icon="🎧", layout="wide")
 
-st.title("🎧 Edge-TTS Pro: Chuyên Trị Văn Bản Dài")
-st.markdown("Phiên bản nâng cấp: Hỗ trợ chỉnh **Cao độ**, **Âm lượng** và **Tự động chia nhỏ file**.")
+st.title("🎧 Công cụ Đọc Giọng Nói (Chuẩn HuggingFace)")
+st.markdown("Hỗ trợ: **Chỉnh giọng**, **Cao độ**, **Tốc độ** và **Tải file văn bản**.")
 
-# Khởi tạo session state
+# Khởi tạo bộ nhớ
 if 'text_content' not in st.session_state:
     st.session_state['text_content'] = ""
 
-# --- GIAO DIỆN 2 CỘT ---
-col_trai, col_phai = st.columns([1, 1], gap="medium")
+# --- 2. GIAO DIỆN 2 CỘT ---
+col1, col2 = st.columns([1, 1], gap="large")
 
-# === CỘT TRÁI: NHẬP LIỆU ===
-with col_trai:
-    st.subheader("1. Nhập văn bản hoặc Upload")
+with col1:
+    st.subheader("1. Nhập văn bản")
     
     # Upload file
-    uploaded_file = st.file_uploader("Upload file truyện (.txt)", type="txt")
-    if uploaded_file is not None:
-        if st.button("📥 Nạp nội dung từ File"):
+    uploaded_file = st.file_uploader("Hoặc tải lên file .txt", type="txt")
+    if uploaded_file:
+        if st.button("📥 Dùng nội dung trong file"):
             try:
-                string_data = uploaded_file.getvalue().decode("utf-8")
-                st.session_state['text_content'] = string_data
-                st.success(f"Đã nạp file thành công! ({len(string_data)} ký tự)")
+                st.session_state['text_content'] = uploaded_file.getvalue().decode("utf-8")
+                st.success("Đã nạp file!")
             except:
-                st.error("Lỗi font chữ! Hãy lưu file .txt với định dạng UTF-8.")
+                st.error("Lỗi file! Hãy dùng file .txt chuẩn UTF-8.")
 
-    # Khung soạn thảo
+    # Khung nhập liệu
     text_input = st.text_area(
-        "Nội dung cần đọc:", 
+        "Nội dung:", 
         value=st.session_state['text_content'], 
-        height=450,
-        placeholder="Nhập văn bản vào đây..."
+        height=400,
+        placeholder="Nhập văn bản tiếng Việt có dấu vào đây..."
     )
-    
-    # Cập nhật ngược lại session
+    # Cập nhật session
     if text_input != st.session_state['text_content']:
         st.session_state['text_content'] = text_input
-        
-    st.caption(f"Độ dài hiện tại: {len(text_input)} ký tự.")
 
-# === CỘT PHẢI: CÀI ĐẶT & XỬ LÝ ===
-with col_phai:
-    st.subheader("2. Cấu hình giọng đọc")
+with col2:
+    st.subheader("2. Cấu hình & Kết quả")
     
-    # Khung cài đặt nằm trong container cho đẹp
     with st.container(border=True):
         # Chọn giọng
-        voice_options = {
-            "🇻🇳 VN - Hoài My (Nữ - Truyện cảm xúc)": "vi-VN-HoaiMyNeural",
-            "🇻🇳 VN - Nam Minh (Nam - Trầm ấm)": "vi-VN-NamMinhNeural",
-            "🇺🇸 US - Aria (Nữ)": "en-US-AriaNeural",
-            "🇺🇸 US - Guy (Nam)": "en-US-GuyNeural",
-            "🇨🇳 CN - Xiaoxiao (Nữ)": "zh-CN-XiaoxiaoNeural"
+        VOICES = {
+            "🇻🇳 VN - Hoài My (Nữ - Truyện)": "vi-VN-HoaiMyNeural",
+            "🇻🇳 VN - Nam Minh (Nam - Tin tức)": "vi-VN-NamMinhNeural",
+            "🇺🇸 US - Aria (Tiếng Anh)": "en-US-AriaNeural",
+            "🇨🇳 CN - Xiaoxiao (Tiếng Trung)": "zh-CN-XiaoxiaoNeural"
         }
-        voice_key = st.selectbox("Chọn giọng đọc:", list(voice_options.keys()))
-        selected_voice = voice_options[voice_key]
+        voice = st.selectbox("Chọn giọng đọc:", list(VOICES.keys()))
+        selected_voice = VOICES[voice]
         
         st.divider()
         
-        # 3 Thanh trượt điều chỉnh (Rate, Pitch, Volume)
-        col_p1, col_p2, col_p3 = st.columns(3)
+        # 3 Thanh trượt (Giống web mẫu)
+        st.caption("Điều chỉnh thông số:")
+        rate = st.slider("Tốc độ (Rate)", -50, 50, 0, format="%d%%")
+        pitch = st.slider("Cao độ (Pitch)", -50, 50, 0, format="%dHz")
+        volume = st.slider("Âm lượng (Volume)", -50, 50, 0, format="%d%%")
         
-        with col_p1:
-            rate = st.slider("Tốc độ", -50, 50, 0, step=5, help="Nhanh hay chậm")
-        with col_p2:
-            pitch = st.slider("Cao độ", -50, 50, 0, step=5, help="Giọng trầm hay bổng")
-        with col_p3:
-            volume = st.slider("Âm lượng", -50, 50, 0, step=5, help="To hay nhỏ")
-
-        # Định dạng tham số cho đúng chuẩn edge-tts
+        # Format chuẩn cho Edge-TTS
+        # Lưu ý: Nếu giá trị là 0, ta để chuỗi "+0%" để đảm bảo đúng cú pháp
         rate_str = f"{rate:+d}%"
         pitch_str = f"{pitch:+d}Hz"
         volume_str = f"{volume:+d}%"
+        
+        st.code(f"Setting: {rate_str} | {pitch_str} | {volume_str}", language="text")
 
-        st.info(f"Cấu hình: Tốc độ {rate_str} | Cao độ {pitch_str} | Âm lượng {volume_str}")
-
-    st.write("") # Khoảng cách
+    st.write("")
     
-    # Nút xử lý chính
-    if st.button("🚀 BẮT ĐẦU CHUYỂN ĐỔI (Xử lý thông minh)", type="primary", use_container_width=True):
+    # Nút bấm xử lý
+    if st.button("🚀 CHUYỂN ĐỔI NGAY", type="primary", use_container_width=True):
         if not text_input.strip():
-            st.warning("⚠️ Chưa có nội dung!")
+            st.warning("⚠️ Hãy nhập văn bản trước!")
         else:
-            status_box = st.status("Đang xử lý...", expanded=True)
+            status = st.status("Đang xử lý...", expanded=True)
+            output_file = "audio_output.mp3"
             
-            # LOGIC XỬ LÝ CHIA NHỎ VĂN BẢN
-            # Edge-TTS không đọc được quá 5000 ký tự một lúc, nên phải chia nhỏ
-            chunk_size = 4000 # Cắt mỗi đoạn 4000 ký tự cho an toàn
-            chunks = [text_input[i:i+chunk_size] for i in range(0, len(text_input), chunk_size)]
-            
-            total_chunks = len(chunks)
-            status_box.write(f"Văn bản dài {len(text_input)} ký tự -> Chia thành {total_chunks} phần nhỏ.")
-            
-            # Hàm chạy TTS
-            async def run_tts(text_chunk, index):
-                output_filename = f"part_{index+1}.mp3"
+            async def run_tts():
                 communicate = edge_tts.Communicate(
-                    text_chunk, 
+                    text_input, 
                     selected_voice, 
                     rate=rate_str, 
                     pitch=pitch_str, 
                     volume=volume_str
                 )
-                await communicate.save(output_filename)
-                return output_filename
+                await communicate.save(output_file)
 
             try:
-                files_created = []
-                progress_bar = status_box.progress(0)
+                # Chạy hàm async
+                asyncio.run(run_tts())
                 
-                for i, chunk in enumerate(chunks):
-                    status_box.write(f"▶️ Đang tạo phần {i+1}/{total_chunks}...")
-                    file_name = asyncio.run(run_tts(chunk, i))
-                    files_created.append(file_name)
-                    progress_bar.progress((i + 1) / total_chunks)
+                status.update(label="✅ Thành công!", state="complete", expanded=False)
                 
-                status_box.update(label="✅ Đã xong! Hãy tải xuống bên dưới.", state="complete", expanded=False)
-                st.balloons()
-
-                # HIỂN THỊ KẾT QUẢ
-                st.success("Kết quả của bạn đây:")
+                # Hiển thị audio
+                st.success("Nghe thử và tải về:")
+                with open(output_file, 'rb') as f:
+                    audio_bytes = f.read()
+                    st.audio(audio_bytes, format='audio/mp3')
+                    st.download_button("📥 Tải File MP3", audio_bytes, "tts_audio.mp3", "audio/mp3")
                 
-                for idx, f_name in enumerate(files_created):
-                    with open(f_name, "rb") as file:
-                        btn = st.download_button(
-                            label=f"📥 Tải Phần {idx+1} (.mp3)",
-                            data=file,
-                            file_name=f"audio_part_{idx+1}.mp3",
-                            mime="audio/mp3"
-                        )
-                        st.audio(f_name, format="audio/mp3")
-                    
-                    # Dọn dẹp file sau khi load lên web xong (Optional)
-                    # os.remove(f_name) 
-
+                os.remove(output_file) # Xóa file tạm
+                
             except Exception as e:
-                status_box.update(label="❌ Có lỗi xảy ra", state="error")
-                st.error(f"Chi tiết lỗi: {e}")
+                status.update(label="❌ Thất bại!", state="error")
+                st.error(f"Lỗi hệ thống: {e}")
+                st.warning("Mẹo: Nếu lỗi, hãy thử reset Tốc độ/Cao độ về 0 hoặc kiểm tra lại văn bản.")
